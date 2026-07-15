@@ -26,6 +26,7 @@ Copy each template to its real filename and fill in values:
 cp .env.example .env                         # PriceYak, OpenAI, eBay cert
 cp credentials.example.txt credentials.txt   # eBay app keys, OAuth, login, Gmail
 cp crawlbase_creds.example.txt crawlbase_creds.txt
+cp notify_config.example.txt notify_config.txt   # optional: phone push alerts
 ```
 
 What goes where:
@@ -35,6 +36,7 @@ What goes where:
 | `.env` | `PY_ACCOUNT_ID`, `PY_API_KEY`, `OPENAI_API_KEY`, `EBAY_CERT_ID` | Loaded by `config.py`. `OPENAI_API_KEY` may instead live in your shell env. |
 | `credentials.txt` | eBay `appid`/`devid`/`certid`, OAuth tokens, `ebay_user`/`ebay_pass`, `gmail_address`/`gmail_app_password` | OAuth tokens are auto-managed after first login. |
 | `crawlbase_creds.txt` | Crawlbase (scraping) token | Single line. |
+| `notify_config.txt` | `ntfy_topic` (or `telegram_token`/`telegram_chat_id`) | **Optional.** Phone push alerts for run digests + monitors. Omit and runs just log locally. See README → *Notifications & monitoring*. |
 
 Sanity check the loader:
 

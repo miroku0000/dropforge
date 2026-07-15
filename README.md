@@ -200,6 +200,28 @@ What makes it robust and cheap to run daily:
 - **Threshold-gated** (default **8/10**) — good listings are left alone, saving API
   spend and avoiding needless churn to search ranking.
 
+## Notifications & monitoring
+
+The pipeline pushes status straight to your phone via **`notify.py`**, so you
+don't have to babysit it:
+
+- **Run digest** — after each `run_airotate.bat`, `airotate_report.py` parses the
+  log into an **OK / WARN / FAIL** summary and pushes it.
+- **Actionable alerts** — failed/underfunded PriceYak orders
+  (`ai_priceyak_order_monitor.py`), PriceYak listing-failure spikes / outages
+  (`ai_priceyak_listing_failures.py`, sent high-priority), the store-size
+  controller digest (`check_limits.py`), and late-shipment warnings.
+
+Two channels, both optional and best-effort — configure in `notify_config.txt`
+(see `notify_config.example.txt`):
+
+- **ntfy** *(recommended — no account)* — set `ntfy_topic`, install the ntfy phone
+  app, subscribe to that topic → instant push. Uses `https://ntfy.sh` by default.
+- **Telegram** — set `telegram_token` + `telegram_chat_id` for a bot.
+
+With neither configured, runs still log locally (`ebay_ads_automation.log`) and
+the digest prints to console — you just don't get the phone push.
+
 ## Tech stack
 
 Python 3.10 · eBay Trading & REST APIs · PriceYak API · OpenAI (GPT-4o) ·

@@ -1,0 +1,14 @@
+# notify.py configuration — copy to `notify_config.txt` (gitignored) and fill in.
+# Key=value lines. With nothing set, runs still log locally and the digest prints
+# to console; you just won't get a phone push. Both channels are optional.
+
+# --- ntfy (recommended: zero account, instant phone push) ---
+# 1) Install the "ntfy" app (iOS/Android) or open https://ntfy.sh
+# 2) Pick a long/secret topic name (anyone who knows it can read your alerts).
+# 3) Subscribe to it in the app, then set it here:
+ntfy_topic=your-long-secret-topic-name
+# ntfy_server=https://ntfy.sh        # optional; this is the default
+
+# --- Telegram (optional alternative) ---
+# telegram_token=123456789:ABCdefGhIjK...
+# telegram_chat_id=987654321
