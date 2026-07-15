@@ -7,6 +7,38 @@ monitoring, product sourcing, listing churn, AI optimization, and reporting.
 Run it via **`run_airotate.bat`**, which executes this pipeline, tees output to a
 timestamped log, and pushes an OK/WARN/FAIL digest notification when done.
 
+## Flow at a glance
+
+```mermaid
+flowchart TD
+    S["Setup: UTF-8 · load listing_config.bat · snapshot count"] --> A
+
+    A["Phase 1 — Auth<br/>Step 0: OAuth refresh"] --> B
+
+    B["Phase 2 — Compliance & cleanup<br/>0-IRC · 0-SWEEP · 0-OOS · 0-SHIP"] --> C
+    C["Phase 3 — Returns & orders<br/>0-RET-A/B/C/D · 0-ORD · 0-CMT"] --> D
+    D["Phase 4 — Download reports<br/>0a traffic · 0c ads · 0e/0e2 priority"] --> E
+    E["Phase 5 — Mine search terms → amazon_urls.txt<br/>0f–0l · Step 1 ROI"] --> F
+
+    F["Phase 6 — Listing churn<br/>2 delete · 3 cache · 3a selective qty · 3b relist · 4 scrape+list"] --> G
+    G["Phase 7 — Post-list resilience<br/>6 kill uploader · 6b retry failures · 7 patches"] --> H
+    H["Phase 8 — AI optimization & reports<br/>8 OpenAI titles/specs · 10 · 13"] --> I
+    I["Phase 9 — Offers & store size<br/>14 send offers · 15 enforce MAX_LISTINGS"] --> J
+    J["Phase 10 — P&L<br/>16 daily · 16b monthly workbook"] --> K
+
+    K["Done → push OK/WARN/FAIL digest"]
+
+    subgraph guard [" "]
+        direction LR
+        note["Every step is fail-soft:<br/>errorlevel 1 → WARNING, continue.<br/>Order matters: compliance before listing;<br/>free $ headroom (3a) before new listings (4)."]
+    end
+    F -.-> guard
+```
+
+> **Sourcing → Listing → Optimization loop:** Phases 4–5 discover *what* to sell,
+> Phase 6 lists it, Phases 8–9 optimize and promote it, and Phase 10 measures the
+> result — which feeds tomorrow's decisions via `check_limits.py`.
+
 **Design principles**
 - **Fail-soft:** every step is independently guarded (`if errorlevel 1 -> WARNING,
   continue`). One failing step never aborts the run.
