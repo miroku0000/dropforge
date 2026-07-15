@@ -1,0 +1,10 @@
+selenium
+requests
+boto3
+wmi
+pandas
+openpyxl
+pyautogui
+bs4
+pathlib
+filelock

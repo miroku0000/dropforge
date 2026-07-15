@@ -1,0 +1,3 @@
+# Copy this file to `crawlbase_creds.txt` (gitignored). One line: your Crawlbase
+# (formerly ProxyCrawl) token, used for Amazon/Newegg scraping.
+YOUR_CRAWLBASE_TOKEN

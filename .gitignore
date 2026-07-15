@@ -1,0 +1,138 @@
+# ============================================================
+#  Secrets / credentials  — NEVER commit these
+# ============================================================
+credentials.txt
+credentials_backup_*.txt
+crawlbase_creds.txt
+oldtoken.txt
+*_creds.txt
+*.env
+.env
+.env.*
+!.env.example
+!credentials.example.txt
+!crawlbase_creds.example.txt
+.crawlbase_account_cache.json
+*token*.json
+*oauth*.json
+*secret*
+
+# ============================================================
+#  Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# ============================================================
+#  Caches (eBay API / LLM / category / item details)
+# ============================================================
+.cache_*/
+.ebay_api_cache/
+.playwright_profile/
+
+# ============================================================
+#  Logs
+# ============================================================
+*.log
+logs/
+
+# ============================================================
+#  Generated data, reports, scrape output
+# ============================================================
+*.csv
+*.xlsx
+*.xls
+*.output
+*_report_*.html
+amazon_search_links_*.txt
+amazon_searches_*.csv
+amazon_urls.txt
+amazon_urls.txt.*
+scrape_queue.jsonl
+listing_state.json
+daily_pnl_history.csv
+
+# ============================================================
+#  Possibly-secret config (notification tokens, proxy auth)
+# ============================================================
+notify_config.txt
+!notify_config.example.txt
+socksapiurl.txt
+
+# ============================================================
+#  Data-input / report / log / scratch .txt (keep requirements.txt)
+# ============================================================
+amazon_search_urls.txt
+newegg_urls.txt
+top_items_ids_only.txt
+*_summary_*.txt
+*_report_*.txt
+*_log.txt
+quick_bid_updates_*.txt
+api_vs_csv_summary.txt
+bs.txt
+foo.txt
+np.txt
+out.txt
+temp.txt
+testurls.txt
+
+# ============================================================
+#  Generated reports (HTML) & data blobs
+# ============================================================
+*.html
+*.json
+*.jsonl
+
+# ============================================================
+#  Media / binaries / shortcuts
+# ============================================================
+*.mp3
+*.mp4
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.pdf
+*.docx
+*.zip
+*.lnk
+*.stackdump
+
+# ============================================================
+#  Data / work directories (not source)
+# ============================================================
+mvbrainstorm/
+.batch_processing/
+downloads/
+Downloads/
+
+# ============================================================
+#  Archived / deprecated code (kept locally, out of the way)
+# ============================================================
+archive/
+Depricated/
+
+# ============================================================
+#  Stray shell-redirect accident files (reserved / no-extension junk)
+# ============================================================
+nul
+oad
+echo
+END
+(rank
+
+# ============================================================
+#  OS / editor cruft
+# ============================================================
+Thumbs.db
+.DS_Store
+*.swp
+.idea/
+.vscode/
