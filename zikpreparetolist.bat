@@ -1,1 +1,0 @@
-priceyakprocesszikautodownloadcsv.py >> "d:\zikprocessor\data\listme.txt"
