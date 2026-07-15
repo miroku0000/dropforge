@@ -52,6 +52,9 @@ Refresh auth ─▶ Compliance/cleanup (IRC, blacklist sweep, OOS removal,
 `check_limits.py` runs separately to tune the listing knobs (in
 `listing_config.bat`) against eBay's item/dollar headroom.
 
+**See [`AIROTATE.md`](AIROTATE.md) for a step-by-step breakdown of every stage
+in the pipeline.**
+
 ### Notable engineering
 
 - **Self-tuning listing controller** (`check_limits.py`) — scales scrape volume
