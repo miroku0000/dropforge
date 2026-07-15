@@ -275,7 +275,6 @@ if errorlevel 1 (
 REM Step 4: Scrape and list new items
 echo/
 echo [STEP 4] Scraping and listing new items...
-rem call scrapeandlist.bat # Old single-threaded version
 REM --max-urls scrapes a random subset so the (growing) term list does not
 REM blow up Crawlbase cost; the whole list is covered over several runs. Tune
 REM the number to your daily scrape budget.
@@ -400,7 +399,6 @@ REM :skip_html
 REM REM Step 11.4: Apply bid changes (original method)
 REM echo/
 REM echo [11.4] Attempting to apply bid changes...
-REM call apply_top_converters_bids.bat
 REM if errorlevel 1 (
 REM     echo [INFO] API updates not available - use manual upload from CSV files
 REM ) else (
