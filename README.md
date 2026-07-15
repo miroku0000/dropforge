@@ -124,6 +124,42 @@ in the pipeline.**
 - **Resilient runs** — each pipeline step is independently guarded; a failure
   logs a warning and continues rather than aborting the whole run.
 
+## AI title & description optimization
+
+The listing-quality step (airotate Step 8 → `test_ebay_utils.py` → `ebay_utils.py`)
+doesn't blindly rewrite listings. It runs an **LLM-as-judge, generate → rate →
+keep-the-better loop**, where the model is used as *both* the copywriter and the
+critic:
+
+1. **Score what's there.** The model rates the current title/description **1–10**
+   on clarity, completeness, professional presentation, use of item specifics, and
+   sales effectiveness (scoring runs at low temperature for consistency).
+2. **Generate a candidate — only if it's below threshold.** An SEO-tuned prompt
+   produces a new **title** (≤ 80 chars, brand-first, feature-rich, no all-caps or
+   promo language) or an **HTML description** (whitelisted `<p>/<ul>/<li>/<strong>`
+   tags, < 1000 words) built from the existing text plus the listing's item
+   specifics.
+3. **Re-score and keep the winner.** A hard **never-worse guarantee** — the
+   rewrite ships only if it strictly out-scores the original; otherwise the
+   listing is left untouched.
+
+What makes it robust and cheap to run daily:
+
+- **Missing item specifics are filled the same way** — the model proposes values
+  for required-but-absent fields (e.g. `Model`, `Type`) so listings satisfy eBay's
+  category requirements.
+- **Tolerant rating parser** — turns any model reply (`9`, `9/10`, `"nine"`,
+  `"rating: 8"`) into a clean 1–10 integer, so a chatty response never breaks the
+  loop.
+- **30-day disk cache** on every generate *and* rate call, keyed by input — re-runs
+  don't re-pay for unchanged listings, so the daily pass is nearly free after the
+  first.
+- **Output sanitizing** — strips ```` ```html ```` fences, unwraps stray `<pre>`
+  blocks, unescapes entities, and enforces the eBay-safe HTML tag whitelist.
+- **Threshold-gated** (default **8/10**) — good listings are left alone, saving API
+  spend and avoiding needless churn to search ranking.
+- **Model-pluggable** — OpenAI (GPT-4o) by default, or a local Ollama model.
+
 ## Tech stack
 
 Python 3.10 · eBay Trading & REST APIs · PriceYak API · OpenAI (GPT-4o) ·
