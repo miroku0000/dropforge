@@ -13,6 +13,54 @@ pipeline.
 
 ---
 
+## Architecture at a glance
+
+```mermaid
+flowchart TB
+    subgraph disc["Term discovery"]
+        MINE["eBay trending · Terapeak ·<br/>Google Trends · autocomplete ·<br/>converting keywords"] --> URLS[("amazon_urls.txt")]
+    end
+
+    subgraph src["Product sources"]
+        AMZ["Amazon"]
+        NEG["Newegg"]
+    end
+
+    CB["Crawlbase<br/>scraping API"]
+    URLS --> CB
+    AMZ --> CB
+    NEG --> CB
+
+    subgraph sys["This system — airotate daily pipeline"]
+        SCR["Scrapers<br/>(filter: price · ship · rating)"]
+        OAI["OpenAI<br/>titles · descriptions · item specifics"]
+        CTRL["check_limits<br/>store-size controller"]
+        MON["P&amp;L · monitoring · push alerts"]
+    end
+    CB --> SCR
+
+    PY["PriceYak<br/>listing + repricing + fulfillment"]
+    EBAY[("eBay marketplace")]
+
+    SCR -->|"submit products"| PY
+    PY -->|"create · reprice · sync qty"| EBAY
+    OAI -->|"optimize live listings"| EBAY
+    EBAY -->|"buyer orders"| PY
+    PY -->|"auto-purchase / dropship"| AMZ
+    EBAY -->|"traffic · selling limits · returns"| CTRL
+    CTRL -->|"tune knobs (listing_config.bat)"| SCR
+    EBAY -->|"revenue"| MON
+    PY -->|"COGS"| MON
+    MON -.->|"feeds tomorrow's run"| SCR
+```
+
+**The loop:** discover what to sell → scrape & list via PriceYak → AI-optimize on
+eBay → buyer orders auto-fulfill from Amazon → eBay signals (traffic, limits,
+returns, P&L) tune the next day's run. See [`AIROTATE.md`](AIROTATE.md) for the
+step-by-step pipeline diagram.
+
+---
+
 ## What it does
 
 - **Sourcing** — scrapes Amazon/Newegg for profitable products (price floor,
