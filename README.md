@@ -143,6 +143,31 @@ critic:
    rewrite ships only if it strictly out-scores the original; otherwise the
    listing is left untouched.
 
+```mermaid
+flowchart TD
+    A["Existing title / description"] --> B{"Rate 1–10<br/>(model as judge)"}
+    B -->|"≥ threshold (8/10)"| K["Keep original — untouched"]
+    B -->|"below threshold"| G["Generate candidate<br/>SEO title / HTML description<br/>+ item specifics"]
+    G --> R["Re-rate candidate<br/>(model as judge)"]
+    R --> C{"candidate score ><br/>original score?"}
+    C -->|"yes"| N["Ship the rewrite"]
+    C -->|"no (never worse)"| K
+```
+
+### Runs on local *or* frontier models
+
+Every generate and rate call has **two interchangeable backends**, and the same
+judge-scored loop above runs on either:
+
+- **Frontier** — OpenAI (GPT-4o by default) for best copy quality.
+- **Local** — a self-hosted **Ollama** model, selected via `fast` / `balanced` /
+  `quality` presets. Zero per-listing API cost and full data privacy.
+
+Toggle with the `--use-ollama` flag on `test_ebay_utils.py` (airotate Step 8 uses
+the frontier path; the optional Step 9 runs the same pass locally). So you can
+develop/bulk-process cheaply on a local box and reserve the frontier model for the
+listings that matter — without changing any of the optimization logic.
+
 What makes it robust and cheap to run daily:
 
 - **Missing item specifics are filled the same way** — the model proposes values
@@ -158,7 +183,6 @@ What makes it robust and cheap to run daily:
   blocks, unescapes entities, and enforces the eBay-safe HTML tag whitelist.
 - **Threshold-gated** (default **8/10**) — good listings are left alone, saving API
   spend and avoiding needless churn to search ranking.
-- **Model-pluggable** — OpenAI (GPT-4o) by default, or a local Ollama model.
 
 ## Tech stack
 
