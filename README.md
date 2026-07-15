@@ -48,7 +48,15 @@ Refresh auth ─▶ Compliance/cleanup (IRC, blacklist sweep, OOS removal,
                 store size ─▶ Daily & monthly P&L
 ```
 
-`run_airotate.bat` wraps it with logging + a push-notification digest.
+Two entry points:
+- **`airotate.bat`** — the pipeline itself. Runs the steps; output streams to the
+  console only (nothing saved, no notification). Use directly for interactive
+  debugging.
+- **`run_airotate.bat`** — the wrapper you normally run (scheduled or manual). It
+  executes `airotate.bat` but tees the output to a timestamped `logs\` file, then
+  runs `airotate_report.py` to push an **OK/WARN/FAIL digest** notification when
+  the run finishes. In short: `run_airotate.bat = airotate.bat + saved log + alert`.
+
 `check_limits.py` runs separately to tune the listing knobs (in
 `listing_config.bat`) against eBay's item/dollar headroom.
 
