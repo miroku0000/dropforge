@@ -163,6 +163,12 @@ cp crawlbase_creds.example.txt crawlbase_creds.txt
 All secrets are loaded through `config.py`, which reads environment variables,
 a local `.env`, and `credentials.txt`. **No secret values live in source code.**
 
+> **⚠️ Before your first run — onboard the store.** Installing deps and filling in
+> secrets is not enough. You must (one-time) register an eBay Developer app
+> (Production keyset), authorize your store against it via the OAuth consent flow,
+> and link the same store in PriceYak. See **[`SETUP.md` §4](SETUP.md)** for the
+> full walkthrough.
+
 ## Running
 
 ```bash
