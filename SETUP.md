@@ -117,7 +117,6 @@ set MIN_PRICE=50          # listing / scrape price floor
 ```bash
 run_airotate.bat                    # full daily pipeline (see AIROTATE.md)
 python check_limits.py              # tune store size (run a few hours later)
-python remote_control_server.py     # phone control panel at http://<PC-IP>:5000
 ```
 
 ## 7. Schedule (optional)

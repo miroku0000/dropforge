@@ -176,15 +176,6 @@ Get a new OAuth token via the eBay Developer Portal (browser required, for when 
 python ai_ebay_get_oauth_token.py
 ```
 
-### Remote Control Web Panel
-Start the web server for phone-based control:
-```bash
-python remote_control_server.py
-# or
-start_remote_control.bat
-```
-Access from phone at `http://<PC-IP>:5000`. All named tasks above are also available as buttons.
-
 ## Important Considerations
 
 - Always check for existing cache before making API calls

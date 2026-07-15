@@ -128,7 +128,7 @@ in the pipeline.**
 
 Python 3.10 · eBay Trading & REST APIs · PriceYak API · OpenAI (GPT-4o) ·
 Crawlbase (scraping) · Playwright & Selenium (browser automation) · Flask
-(phone remote-control panel) · pandas/openpyxl (data & Excel).
+(local OAuth callback) · pandas/openpyxl (data & Excel).
 
 ## Repository layout
 
@@ -141,7 +141,6 @@ Crawlbase (scraping) · Playwright & Selenium (browser automation) · Flask
 | `mine_*.py`, `scrape_*.py`, `amazon_*.py` | Sourcing & keyword discovery |
 | `check_limits.py`, `listing_config.bat` | Store-size controller + knobs |
 | `pnl_month.py`, `ai_daily_pnl.py`, `update_pnl.py` | Profit & loss |
-| `remote_control_server.py` | Flask panel for phone-based control |
 | `test_*.py` | Ad-hoc verification scripts |
 | `archive/` | Legacy/experimental scripts (gitignored, kept for reference) |
 | `CLAUDE.md` | Detailed operator notes & named task reference |
@@ -180,9 +179,6 @@ python check_limits.py
 
 # Monthly cost of goods sold from PriceYak
 python pnl_month.py --year 2026 --month 6
-
-# Phone remote-control panel (named tasks as buttons)
-python remote_control_server.py            # http://<PC-IP>:5000
 ```
 
 See **`CLAUDE.md`** for the full catalog of named dispatch tasks (ad reports,
