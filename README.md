@@ -154,19 +154,35 @@ flowchart TD
     C -->|"no (never worse)"| K
 ```
 
-### Runs on local *or* frontier models
+### Models used (current default)
 
-Every generate and rate call has **two interchangeable backends**, and the same
-judge-scored loop above runs on either:
+Every generate/rate call routes to one of two backends — a **frontier** model
+(OpenAI) and a **local** model (Ollama). In the default production config
+(`USE_OLLAMA=false`, airotate Step 8) the work is split by task:
 
-- **Frontier** — OpenAI (GPT-4o by default) for best copy quality.
-- **Local** — a self-hosted **Ollama** model, selected via `fast` / `balanced` /
-  `quality` presets. Zero per-listing API cost and full data privacy.
+| Task | Model (default) |
+|------|-----------------|
+| Score title | OpenAI **`gpt-4o`** |
+| Score description | OpenAI **`gpt-4o`** |
+| Write description | OpenAI **`gpt-4o`** |
+| Write title | local **Ollama `gemma3:4b`** (`balanced` preset) |
+| Fill missing item specifics | local **Ollama `gemma3:4b`** (`balanced` preset) |
 
-Toggle with the `--use-ollama` flag on `test_ebay_utils.py` (airotate Step 8 uses
-the frontier path; the optional Step 9 runs the same pass locally). So you can
-develop/bulk-process cheaply on a local box and reserve the frontier model for the
-listings that matter — without changing any of the optimization logic.
+So the quality-sensitive work (descriptions + all judging) runs on a frontier
+model, while the short, cheap tasks (titles, item specifics) run locally.
+
+**All-local mode** — pass `--use-ollama` (airotate's optional Step 9) and *every*
+task, including scoring and descriptions, runs on Ollama: zero per-listing API
+cost and full data privacy. The local model is chosen by preset:
+
+| Preset | Ollama model |
+|--------|--------------|
+| `fast` | `gemma3:1b` |
+| `balanced` *(default)* | `gemma3:4b` |
+| `quality` | `dolphin-mixtral:8x7b-v2.6` |
+
+Change these via the `OPENAI_MODEL` constant (frontier) or the
+`OLLAMA_MODEL_PRESET` env var (local).
 
 What makes it robust and cheap to run daily:
 
