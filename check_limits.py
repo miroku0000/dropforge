@@ -41,6 +41,9 @@ KNOBS = ("PLAN_LIMIT", "MAX_LISTINGS", "MAX_URLS", "RELIST_MAX", "DELETE_MAX", "
 PLAN_BUFFER = 20   # keep the target this far under the PriceYak plan ceiling
 URLS_MIN, URLS_MAX = 200, 3000
 EBAY_QTY_FLOOR, EBAY_AMT_FLOOR = 800, 5000   # throttle below these monthly remainders
+RESERVE_AMOUNT = 1000   # keep >= this much eBay $ headroom untouched so PriceYak can still
+                        # revise prices UPWARD (an upward revise needs room under the selling
+                        # limit); our own listing/growth automation must never consume it.
 
 
 def parse_config():
@@ -128,13 +131,21 @@ def main():
     new = dict(cfg)
     actions = []
 
+    # Dollar headroom we're allowed to consume with NEW listings: always hold
+    # RESERVE_AMOUNT back so PriceYak can still revise prices upward.
+    usable_amt = (amt_rem - RESERVE_AMOUNT) if amt_rem is not None else None
+
     if active > target:                                    # overshot -> delete back under
         over = active - target
         actions.append(f"OVER target by {over} -> deleting down to {target}")
         if not args.dry_run:
             subprocess.run([sys.executable, "ai_ebay_enforce_max_listings.py", str(target)])
         new["MAX_URLS"] = _clamp(cfg["MAX_URLS"] * 0.7, URLS_MIN, URLS_MAX)
-    elif qty_rem is not None and (qty_rem < EBAY_QTY_FLOOR or amt_rem < EBAY_AMT_FLOOR):
+    elif amt_rem is not None and amt_rem <= RESERVE_AMOUNT:  # into the reserve -> stop listing
+        new["MAX_URLS"] = URLS_MIN
+        actions.append(f"eBay $ headroom ${amt_rem:,.0f} <= ${RESERVE_AMOUNT} reserve -> "
+                       "halting new listings (holding reserve for price increases)")
+    elif qty_rem is not None and (qty_rem < EBAY_QTY_FLOOR or usable_amt < EBAY_AMT_FLOOR):
         new["MAX_URLS"] = _clamp(cfg["MAX_URLS"] * 0.5, URLS_MIN, URLS_MAX)
         actions.append("eBay monthly headroom low -> throttling scrape")
     else:                                                  # under target -> scale to the gap
@@ -147,7 +158,8 @@ def main():
         # pinned at target with eBay room -> grow target, but never past the
         # PriceYak plan ceiling (PLAN_LIMIT - buffer).
         ceiling = cfg.get("PLAN_LIMIT", target) - PLAN_BUFFER
-        if active >= target * 0.98 and (qty_rem is None or qty_rem > 2000) and target < ceiling:
+        if (active >= target * 0.98 and (qty_rem is None or qty_rem > 2000)
+                and (usable_amt is None or usable_amt > EBAY_AMT_FLOOR) and target < ceiling):
             new["MAX_LISTINGS"] = min(target + 300, ceiling)
             actions.append(f"store pinned; raising target to {new['MAX_LISTINGS']} (plan ceiling {ceiling})")
 
@@ -160,7 +172,8 @@ def main():
         save_state(state)
 
     netstr = f"{net:+d}" if net is not None else "n/a"
-    ebay_line = (f"eBay monthly headroom: {qty_rem} items, ${amt_rem:,.0f}"
+    ebay_line = (f"eBay monthly headroom: {qty_rem} items, ${amt_rem:,.0f} "
+                 f"(${RESERVE_AMOUNT} reserved -> ${usable_amt:,.0f} usable for new listings)"
                  if qty_rem is not None else "eBay monthly headroom: unavailable")
     lines = [
         f"active {active} / target {target} (gap {gap}); net since airotate {netstr}",
