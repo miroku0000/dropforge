@@ -149,7 +149,7 @@ def main():
     if not losing_money:
         log.info("Healthy -- no action.")
         if args.notify_ok:
-            notify.send("Margin guard OK", summary, tags="white_check_mark")
+            notify.send(f"Profitability {args.days}d: +{margin_pct:.0f}%", summary, tags="white_check_mark")
         return
 
     # We're losing money. Decide whether to raise (cooldown-gated).
