@@ -1,8 +1,13 @@
 """
 Daily P&L Summary
-Uses the PriceYak sales export to calculate profit per item.
-Uses Total Fulfillment Cost from PriceYak (actual Amazon cost paid)
-instead of scraping Amazon prices.
+Pulls orders live from the PriceYak API (same source as pnl_month.py) and
+calculates profit per item. Uses the actual Amazon cost paid
+(zinc_response_blob.price_components, or the cost typed in the order comment
+for externally-fulfilled orders) instead of scraping Amazon prices.
+
+Previously this read a manually-downloaded PriceYak `export_*.csv` from
+~/Downloads; that export stopped being produced, so the report silently
+returned nothing. It now hits the API directly and needs no CSV.
 
 Usage:
     python ai_daily_pnl.py                    # Yesterday's sales
@@ -11,13 +16,15 @@ Usage:
 """
 
 import os
-import re
-import sys
-import glob
 import argparse
 import logging
-import pandas as pd
 from datetime import datetime, timedelta
+
+import pandas as pd
+
+# Reuse the PriceYak API helpers from the monthly P&L so there is a single
+# source of truth for login / paging / per-order cost logic.
+from pnl_month import py_login, fetch_orders_until, cost_of
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,53 +36,39 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DOWNLOAD_DIR = os.path.expanduser('~/Downloads')
-LOCAL_DOWNLOADS = os.path.join(os.getcwd(), 'downloads')
 PNL_LOG = 'daily_pnl_history.csv'
 EBAY_FEE_RATE = 0.13
 
 
-def find_priceyak_export():
-    """Find the latest PriceYak sales export."""
-    files = []
-    for directory in [LOCAL_DOWNLOADS, DOWNLOAD_DIR]:
-        files.extend(glob.glob(os.path.join(directory, 'export_*.csv')))
-    if not files:
-        return None
-    return max(files, key=os.path.getmtime)
+def _item_info(o):
+    """(asin, ebay_item_id, qty) from the order's first line item."""
+    items = o.get('items') or []
+    it = items[0] if items else {}
+    listing = it.get('listing') or {}
+    asin = it.get('product_id') or 'N/A'
+    item_id = listing.get('itemid') or o.get('destination_record_number') or 'N/A'
+    try:
+        qty = int(it.get('quantity') or 1)
+    except (TypeError, ValueError):
+        qty = 1
+    return str(asin), str(item_id), qty
 
 
-def clean_currency(val):
-    """Convert '$  123.45' to float."""
-    if pd.isna(val):
-        return None
-    return float(str(val).replace('$', '').replace(',', '').strip())
+def _ebay_fees(o, revenue):
+    """Actual eBay fees from PriceYak (cents), falling back to a flat estimate."""
+    fees = o.get('destination_fees')
+    if fees:
+        return fees / 100.0
+    return revenue * EBAY_FEE_RATE
 
 
-def get_sales(export_path, start_date, end_date):
-    """Get sales from PriceYak export for the date range."""
-    df = pd.read_csv(export_path, encoding='latin-1')
-    df['Order Date'] = pd.to_datetime(df['Order Date'])
-
-    sales = df[(df['Order Date'] >= start_date) & (df['Order Date'] < end_date)].copy()
-
-    sales['Price'] = sales['Txn Price'].apply(clean_currency)
-    sales['Fulfillment Cost'] = sales['Total Fulfillment Cost'].apply(clean_currency)
-    sales['FVF'] = sales['FVF Fee'].apply(clean_currency)
-
-    # Skip cancelled and returned orders
-    notes = sales['Notes'].fillna('').str.lower()
-    sales = sales[~notes.str.contains('cancel|return|refund')]
-
-    # If fulfillment cost is 0 or missing, try to extract a dollar amount from Notes
-    for idx, row in sales.iterrows():
-        if (row['Fulfillment Cost'] is None or row['Fulfillment Cost'] == 0):
-            note = str(row.get('Notes', ''))
-            cost_match = re.search(r'\$?([\d]+\.?\d*)', note)
-            if cost_match and 'cancel' not in note.lower() and 'return' not in note.lower():
-                sales.at[idx, 'Fulfillment Cost'] = float(cost_match.group(1))
-
-    return sales
+def get_sales(start_ts, end_ts):
+    """Fetch non-cancelled PriceYak orders created in [start_ts, end_ts)."""
+    token = py_login()
+    orders = fetch_orders_until(token, start_ts)
+    return [o for o in orders
+            if start_ts <= (o.get('created_time') or 0) < end_ts
+            and not o.get('cancelled')]
 
 
 def main():
@@ -83,43 +76,42 @@ def main():
     parser.add_argument('--days', type=int, default=1, help='Number of days to report (default: 1 = yesterday)')
     args = parser.parse_args()
 
-    today = pd.Timestamp.now().normalize()
-    start_date = today - timedelta(days=args.days)
-    end_date = today
+    # Day boundaries at local midnight; .timestamp() converts to epoch seconds
+    # to match PriceYak's created_time (epoch UTC).
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_dt = today - timedelta(days=args.days)
+    end_dt = today
+    start_ts = int(start_dt.timestamp())
+    end_ts = int(end_dt.timestamp())
 
     log.info("=" * 60)
     log.info("DAILY P&L REPORT")
     log.info("=" * 60)
-    log.info(f"Period: {start_date.strftime('%Y-%m-%d')} to {(end_date - timedelta(days=1)).strftime('%Y-%m-%d')}")
+    log.info(f"Period: {start_dt.strftime('%Y-%m-%d')} to {(end_dt - timedelta(days=1)).strftime('%Y-%m-%d')}")
 
-    export_path = find_priceyak_export()
-    if not export_path:
-        log.error("No PriceYak export found (export_*.csv)")
-        return
-    log.info(f"PriceYak export: {os.path.basename(export_path)}")
+    orders = get_sales(start_ts, end_ts)
+    log.info(f"Sales in period: {len(orders)}")
 
-    sales = get_sales(export_path, start_date, end_date)
-    log.info(f"Sales in period: {len(sales)}")
-
-    if sales.empty:
-        print(f"\nNo sales found for {start_date.strftime('%Y-%m-%d')} to {(end_date - timedelta(days=1)).strftime('%Y-%m-%d')}")
+    if not orders:
+        print(f"\nNo sales found for {start_dt.strftime('%Y-%m-%d')} to {(end_dt - timedelta(days=1)).strftime('%Y-%m-%d')}")
         return
 
-    # Process each sale
+    # Process each sale. Revenue (amount_paid) and cost (cost_of) are already
+    # per-order totals including quantity, so we do NOT multiply by qty.
     results = []
-    for _, row in sales.iterrows():
-        item_id = str(int(row['Destination Item ID'])) if pd.notna(row['Destination Item ID']) else 'N/A'
-        asin = str(row['Source Item ID']) if pd.notna(row['Source Item ID']) and str(row['Source Item ID']) != 'nan' else 'N/A'
-        order_date = row['Order Date'].strftime('%m/%d %H:%M')
-        qty = int(row.get('Order Quantity', 1))
-        ebay_price = row['Price'] or 0
-        fulfillment_cost = row['Fulfillment Cost']
-        fvf_fee = row['FVF'] or 0
+    for o in sorted(orders, key=lambda x: x.get('created_time') or 0):
+        asin, item_id, qty = _item_info(o)
+        order_date = datetime.fromtimestamp(o.get('created_time') or 0).strftime('%m/%d %H:%M')
+        revenue = (o.get('amount_paid') or 0) / 100.0
 
-        revenue = ebay_price * qty
-        cost = fulfillment_cost if fulfillment_cost else None
-        # Use actual FVF fee from PriceYak if available, otherwise estimate
-        ebay_fees = fvf_fee if fvf_fee > 0 else revenue * EBAY_FEE_RATE
+        cost, src, _note = cost_of(o)
+        # Refunded orders carry $0 COGS but the sale was reversed -- skip them
+        # so they don't inflate the day's revenue/profit.
+        if src == 'refunded':
+            continue
+        # 'none' means we couldn't determine the Amazon cost for this order.
+        cost = cost if src != 'none' else None
+        ebay_fees = _ebay_fees(o, revenue)
         profit = revenue - cost - ebay_fees if cost is not None else None
 
         results.append({
@@ -133,10 +125,14 @@ def main():
             'profit': profit,
         })
 
+    if not results:
+        print(f"\nNo billable sales for {start_dt.strftime('%Y-%m-%d')} to {(end_dt - timedelta(days=1)).strftime('%Y-%m-%d')}")
+        return
+
     # Print report
-    period = start_date.strftime('%Y-%m-%d')
+    period = start_dt.strftime('%Y-%m-%d')
     if args.days > 1:
-        period = f"{start_date.strftime('%Y-%m-%d')} to {(end_date - timedelta(days=1)).strftime('%Y-%m-%d')}"
+        period = f"{start_dt.strftime('%Y-%m-%d')} to {(end_dt - timedelta(days=1)).strftime('%Y-%m-%d')}"
 
     print(f"\n{'='*72}")
     print(f"  DAILY P&L REPORT -- {period}")
@@ -182,7 +178,7 @@ def main():
 
     # Append to history log
     log_entry = {
-        'date': start_date.strftime('%Y-%m-%d'),
+        'date': start_dt.strftime('%Y-%m-%d'),
         'items_sold': len(results),
         'total_qty': sum(r['qty'] for r in results),
         'revenue': total_revenue,
