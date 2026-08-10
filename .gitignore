@@ -139,3 +139,4 @@ Thumbs.db
 
 # PriceYak pricer config backups (data)
 priceyak_pricer_backups/
+margin_guard_state.json

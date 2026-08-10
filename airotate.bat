@@ -418,6 +418,18 @@ if errorlevel 1 (
 )
 echo "Daily campaign report generated and opened in browser"
 
+REM Step 13b: Profitability guard -- measure realized net profit of recent
+REM sales and auto-raise the PriceYak slow-mover margin floor if sales are
+REM losing money. Runs BEFORE send_offers so prices are corrected before more
+REM 5%%-off offers go out. Notifies on any loss / raise.
+echo/
+echo [STEP 13b] Running profitability guard...
+python priceyak_margin_guard.py --apply
+if errorlevel 1 (
+    echo [WARNING] Margin guard had issues
+)
+echo "Margin guard complete"
+
 REM Step 14: Send offers to eligible buyers (5% off)
 echo/
 echo [STEP 14] Sending offers to eligible buyers (5%% off)...
