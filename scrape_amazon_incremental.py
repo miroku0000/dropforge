@@ -279,6 +279,24 @@ def save_asins_batch(asins: list[str]):
         for asin in asins:
             f.write(asin + "\n")
 
+
+def _prefilter_asins(asins: list[str]) -> list[str]:
+    """Drop blacklisted / known-permanent-reject ASINs before they enter the
+    upload queue -- saves scrape budget and wasted PriceYak list attempts. Uses
+    the file-based lists only (no PriceYak token needed here); the submit-time
+    prefilter in batch_uploader still does the live active-listing dedup."""
+    try:
+        from listing_prefilter import filter_asins
+        kept, dropped = filter_asins(asins, token=None)
+        n = sum(len(v) for v in dropped.values())
+        if n:
+            summary = ", ".join(f"{len(v)} {k}" for k, v in dropped.items() if v)
+            print(f"  Pre-filter: dropped {n}/{len(asins)} ({summary})")
+        return kept
+    except Exception as e:  # never let filtering break scraping
+        print(f"  Pre-filter skipped ({e})")
+        return asins
+
 def main():
     # Parse --min-price argument
     min_price = 0
@@ -354,6 +372,11 @@ def main():
                         except ValueError:
                             pass  # Can't parse price, let it through
 
+                    # Skip ASINs PriceYak will predictably reject (blacklist / known permanent fail)
+                    if not _prefilter_asins([details["asin"]]):
+                        print(f"✗ Skipped (pre-filter): {details['asin']}")
+                        continue
+
                     # Save to individual file
                     output_file = os.path.join(AMAZON_DIR, f"{details['asin']}.json")
                     with open(output_file, "w") as f:
@@ -387,6 +410,10 @@ def main():
                     skipped = before - len(asins)
                     if skipped:
                         print(f"  Price gate: skipped {skipped}/{before} card(s) below ${min_price:.0f}")
+
+                # Drop blacklisted / known-permanent-reject ASINs before enqueue.
+                if asins:
+                    asins = _prefilter_asins(asins)
 
                 if asins:
                     print(f"✓ Browse page: Found {len(asins)} products")

@@ -41,6 +41,17 @@ if errorlevel 1 (
     echo [WARNING] Blacklist sweep had issues, continuing...
 )
 
+REM Step 0-UNSUP: Blacklist ASINs behind "item_not_supported" order failures.
+REM Amazon will never fulfill these, so retrying is useless -- add the ASIN to
+REM the blacklist, sync the scrape filter, and end the live listing so it stops
+REM taking unfulfillable orders. (The order monitor no longer retries these.)
+echo/
+echo [STEP 0-UNSUP] Blacklisting item_not_supported failures...
+python ai_priceyak_blacklist_unsupported.py --scan 500
+if errorlevel 1 (
+    echo [WARNING] Unsupported-item blacklister had issues, continuing...
+)
+
 REM Step 0-OOS: Remove listings that have been out of stock (Amazon source)
 REM for too long. PriceYak reports quantity==0 + oos_time; end anything OOS for
 REM >= 14 days via the same bulk_delist endpoint priceyakbulkdelete.py uses.
@@ -304,6 +315,17 @@ echo [STEP 6b] Checking PriceYak listing failures (retry transient)...
 python ai_priceyak_listing_failures.py --hours 24 --retry --max 300
 if errorlevel 1 (
     echo [WARNING] Listing-failure monitor had issues, continuing...
+)
+
+REM Step 6c: Harvest PERMANENTLY-rejected ASINs (veromatic/banned/max_price) from
+REM PriceYak's failure history into data/rejected_asins.txt, so listing_prefilter
+REM stops re-submitting the same junk every cycle. This is what keeps the 5000-slot
+REM plan filling with LISTABLE items instead of burning attempts on known rejects.
+echo/
+echo [STEP 6c] Harvesting permanently-rejected ASINs (pre-filter list)...
+python harvest_rejected_asins.py --scan 3000
+if errorlevel 1 (
+    echo [WARNING] Rejected-ASIN harvester had issues, continuing...
 )
 
 REM Step 7: Apply error handling patches if available

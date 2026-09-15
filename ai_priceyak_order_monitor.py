@@ -51,6 +51,11 @@ PY_API_KEY = config.PY_API_KEY
 # Failures that mean "fix the money", not "retry".
 FUNDING_REASONS = {"insufficient_zma_balance", "payment_info_problem"}
 
+# Failures where retrying is pointless because Amazon will never fulfill the
+# item. item_not_supported is handled separately by
+# ai_priceyak_blacklist_unsupported.py (blacklist the ASIN + end the listing).
+NO_RETRY_REASONS = {"item_not_supported"}
+
 
 def py_login():
     r = requests.post(
@@ -120,6 +125,8 @@ def classify(orders, untracked_hours, now):
         if o.get("state") == "failure":
             if reason in FUNDING_REASONS:
                 add_money.append(rec)
+            elif reason in NO_RETRY_REASONS:
+                continue  # unsupported item: blacklisted+delisted elsewhere, never retry
             elif _is_locked(o):
                 continue  # locked: leave it (PriceYak won't retry it anyway)
             else:

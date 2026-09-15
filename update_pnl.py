@@ -5,7 +5,7 @@ transactions tab so COGS auto-computes. Intended to run from airotate.bat.
 
 Per month it writes on the `profit` tab:
   - Revenue + net sales  (scraped from the eBay Sales dashboard)
-  - priceyak  (fixed 156.75/mo)
+  - priceyak  (plan fee: 156.75/mo through 2026-08, 228.00/mo from 2026-09)
   - month-header date, and COGS / total Expenses / profit FORMULAS
 crawlbase is left for you to fill (usage-based, no API). COGS comes from the
 transactions tab, which this refreshes with actual PriceYak costs.
@@ -30,7 +30,19 @@ from refresh_transactions import (PATH, PAC, COGS_FORMULA, py_login, fetch_year,
                                   refresh_year_transactions)
 import crawlbase_cost
 
-PRICEYAK_FEE = 156.75
+# PriceYak plan fee is date-dependent: the 2600-slot plan was $156.75/mo through
+# Aug 2026; upgraded to the 5000-slot plan ($228.00/mo) effective Sep 2026. Keep
+# past months on the old fee so historical profit stays accurate.
+PRICEYAK_FEE = 156.75            # legacy 2600 plan (through 2026-08)
+PRICEYAK_FEE_5000 = 228.00       # 5000 plan, effective 2026-09
+PRICEYAK_5000_START = (2026, 9)  # (year, month) the 5000 plan took effect
+
+
+def priceyak_fee(year, month):
+    """Monthly PriceYak plan fee for the given month (plan upgrades are dated)."""
+    return PRICEYAK_FEE_5000 if (year, month) >= PRICEYAK_5000_START else PRICEYAK_FEE
+
+
 ROW = {"date": 1, "rev": 2, "net": 3, "py": 7, "cb": 8, "cogs": 9, "total": 12, "profit": 14}
 
 
@@ -108,7 +120,7 @@ def main():
             _set(pr, ROW["rev"], c, round(e["revenue"], 2), prev)
         if e.get("net_sales") is not None:
             _set(pr, ROW["net"], c, round(e["net_sales"], 2), prev)
-        _set(pr, ROW["py"], c, PRICEYAK_FEE, prev)
+        _set(pr, ROW["py"], c, priceyak_fee(year, mo), prev)
         cb = crawlbase_cost.month_cost(cb_data, f"{year}-{mo:02d}")
         if cb is not None:
             _set(pr, ROW["cb"], c, cb, prev)

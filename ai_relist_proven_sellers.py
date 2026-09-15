@@ -91,7 +91,11 @@ def priceyak_login():
 
 
 def submit_to_priceyak(asins, token):
-    """Submit ASINs to PriceYak for listing."""
+    """Submit ASINs to PriceYak for listing (pre-filtered to skip predictable rejects)."""
+    from listing_prefilter import clean, NoopResp
+    asins = clean(asins, token=token, label="relist")
+    if not asins:
+        return NoopResp()
     resp = requests.post(
         f"https://www.priceyak.com:443/v0/account/{PRICEYAK_ACCOUNT_ID}/requests/create_batch",
         headers={

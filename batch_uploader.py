@@ -35,7 +35,11 @@ def login(account_id, api_key):
 
 
 def upload_batch_to_priceyak(product_ids, token):
-    """Upload a batch of product IDs to PriceYak"""
+    """Upload a batch of product IDs to PriceYak (pre-filtered to skip predictable rejects)"""
+    from listing_prefilter import clean, NoopResp
+    product_ids = clean(product_ids, token=token, label="batch")
+    if not product_ids:
+        return NoopResp()
     url = f"https://www.priceyak.com:443/v0/account/{account_id}/requests/create_batch"
 
     headers = {
