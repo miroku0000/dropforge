@@ -1,16 +1,20 @@
 """
 eBay Send Offers to Buyers (Playwright)
-Sends offers on all eligible listings for 5% off with an extra 5% coupon.
+Sends offers on all SIO-eligible listings for 5% off.
 
 Flow:
 1. Go to active listings filtered by SIO-eligible
-2. Select all listings
+2. Select all listings (aborts cleanly if 0 eligible)
 3. Click "Offer to buyers"
 4. Enter 5% discount
-5. Check "Send coupon" and select "Extra 5%"
+5. Ensure "Send automated offer" is enabled (eBay retired the old
+   "Send coupon / Extra 5%" control -- it no longer exists in the dialog)
 6. Click Send
 
-Uses a persistent Playwright profile so eBay login is remembered.
+Uses a persistent Playwright profile so eBay login is remembered. Auto-logs in
+from credentials.txt when eBay bounces to sign-in, and pushes a phone alert via
+notify.py on failure / suspicious 0-eligible so this revenue step can't fail
+silently.
 
 Usage:
     python ai_ebay_send_offers.py            # 5% off (default)
@@ -22,7 +26,13 @@ import sys
 import logging
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-from playwright_browser import launch_ebay_browser
+from playwright_browser import launch_ebay_browser, needs_signin, wait_for_signin
+
+try:
+    from notify import send as notify_send
+except Exception:  # notify is optional; never let its absence break the run
+    def notify_send(title, message, priority="default", tags=None):
+        return False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +49,20 @@ DOWNLOAD_DIR = os.path.expanduser('~/Downloads')
 SIO_URL = "https://www.ebay.com/sh/lst/active?pill_status=sioEligible&action=search"
 
 
+def _safe_shot(page, name):
+    """
+    Take a debug screenshot without ever aborting the run. full_page=True on the
+    long active-listings page can exceed 30s and kill the whole flow, so we use a
+    viewport-only capture with a short timeout and swallow any failure.
+    """
+    ss = os.path.join(DOWNLOAD_DIR, f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+    try:
+        page.screenshot(path=ss, full_page=False, timeout=10000)
+        log.info(f"Screenshot: {ss}")
+    except Exception as e:
+        log.warning(f"Screenshot '{name}' skipped: {e}")
+
+
 def send_offers(percent_off=5):
     """
     Send offers to buyers on all eligible listings.
@@ -53,18 +77,21 @@ def send_offers(percent_off=5):
             log.info(f"Opening SIO-eligible listings page...")
             page.goto(SIO_URL, wait_until="load", timeout=60000)
 
-            # Check login
-            if "signin" in page.url.lower():
-                log.warning("Please log in to eBay in the browser window.")
-                page.wait_for_url("**/sh/lst/**", timeout=120000)
-                log.info("Login detected, continuing...")
+            # Check login. Use the shared auto-login helper (fills credentials
+            # from credentials.txt) so this works unattended in airotate --
+            # eBay often bounces the active-listings page to sign-in even when
+            # the Seller Hub warm-up looked fine.
+            if needs_signin(page):
+                if not wait_for_signin(page, success_url_glob="**/sh/lst/**"):
+                    raise RuntimeError("Could not sign in to eBay (auto-login failed)")
+                # Sign-in redirected us away from the SIO page; go back.
+                log.info("Re-opening SIO-eligible listings page after sign-in...")
+                page.goto(SIO_URL, wait_until="load", timeout=60000)
 
             page.wait_for_timeout(5000)
 
             # Screenshot
-            ss = os.path.join(DOWNLOAD_DIR, f"sio_page_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            page.screenshot(path=ss, full_page=True)
-            log.info(f"Page screenshot: {ss}")
+            _safe_shot(page, "sio_page")
 
             # 2. Select all listings - click the "select all" checkbox
             log.info("Selecting all eligible listings...")
@@ -97,6 +124,23 @@ def send_offers(percent_off=5):
             page.wait_for_timeout(2000)
             log.info("Selected all listings")
 
+            # Count what actually got selected. A silent "0 selected" would sail
+            # through the rest of the flow as a fake success and send no offers --
+            # the exact critical failure we must not miss. If there are genuinely
+            # 0 eligible listings, that's a clean no-op, not an error, so return
+            # the count and let the caller decide how loudly to report it.
+            try:
+                selected_count = page.locator(
+                    "tbody input[type='checkbox']:checked, "
+                    "[data-testid='shui-dt-body'] input[type='checkbox']:checked"
+                ).count()
+            except Exception:
+                selected_count = -1  # couldn't determine; don't fabricate a number
+            log.info(f"Listings selected: {selected_count}")
+            if selected_count == 0:
+                log.warning("0 eligible listings selected -- nothing to offer.")
+                return 0
+
             # 3. Click "Offer to buyers" button
             log.info("Looking for 'Offer to buyers' button...")
             offer_btn = None
@@ -126,8 +170,7 @@ def send_offers(percent_off=5):
 
             if not offer_btn:
                 log.error("Could not find 'Offer to buyers' button")
-                ss2 = os.path.join(DOWNLOAD_DIR, f"sio_no_offer_btn_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-                page.screenshot(path=ss2, full_page=True)
+                _safe_shot(page, "sio_no_offer_btn")
                 raise RuntimeError("Offer to buyers button not found")
 
             offer_btn.evaluate("el => el.click()")
@@ -135,9 +178,7 @@ def send_offers(percent_off=5):
             log.info("Clicked 'Offer to buyers'")
 
             # Screenshot the offer dialog
-            ss3 = os.path.join(DOWNLOAD_DIR, f"sio_dialog_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            page.screenshot(path=ss3, full_page=True)
-            log.info(f"Offer dialog screenshot: {ss3}")
+            _safe_shot(page, "sio_dialog")
 
             # 4. Enter the discount percentage
             log.info(f"Setting discount to {percent_off}%...")
@@ -175,54 +216,35 @@ def send_offers(percent_off=5):
             page.wait_for_timeout(1000)
             log.info(f"Entered {percent_off}% discount")
 
-            # 5. Check "Send coupon" checkbox and select "Extra 5%"
-            log.info("Looking for 'Send coupon' option...")
-            coupon_checkbox = None
-            for selector in [
-                "#checkbox__send-coupon",
-                "input[id*='send-coupon']",
-                "input[name*='coupon']",
-                "label:has-text('coupon')",
-                "span:has-text('coupon')",
-            ]:
-                loc = page.locator(selector).first
-                if loc.is_visible(timeout=2000):
-                    coupon_checkbox = loc
-                    log.info(f"Found coupon checkbox: {selector}")
-                    break
-
-            if coupon_checkbox:
-                coupon_checkbox.evaluate("el => el.click()")
-                page.wait_for_timeout(1000)
-                log.info("Checked 'Send coupon'")
-
-                # Select "Extra 5%" coupon option
-                log.info("Selecting 'Extra 5%' coupon...")
-                # Click the coupon value selector
-                coupon_selector = page.locator(".se-field-card__content-value").first
-                if coupon_selector.is_visible(timeout=2000):
-                    coupon_selector.evaluate("el => el.click()")
-                    page.wait_for_timeout(1000)
-
-                # Click "Extra 5%" option
-                extra5 = page.locator(f"text='Extra {percent_off}%'").first
-                if not extra5.is_visible(timeout=2000):
-                    extra5 = page.locator(f"span:has-text('Extra {percent_off}')").first
-                if extra5.is_visible(timeout=2000):
-                    extra5.evaluate("el => el.click()")
-                    page.wait_for_timeout(1000)
-                    log.info(f"Selected 'Extra {percent_off}%' coupon")
+            # 5. Ensure "Send automated offer" is enabled.
+            # eBay retired the old "Send coupon / Extra 5%" control -- the current
+            # dialog has no coupon option at all (confirmed from the live dialog
+            # 2026-07-21). The modern equivalent is "Send automated offer", which
+            # keeps offering the discount to interested buyers for ~1 year. It is
+            # checked by default; we verify it's ticked rather than blindly click
+            # it (a blind click would toggle it OFF).
+            log.info("Ensuring 'Send automated offer' is enabled...")
+            try:
+                auto_offer = page.locator(
+                    "input[type='checkbox']:below(:text('Send automated offer')), "
+                    "label:has-text('Send automated offer') input[type='checkbox']"
+                ).first
+                if auto_offer.count() and not auto_offer.is_checked():
+                    # Click the associated label/text so the styled checkbox flips.
+                    page.locator("text=Send automated offer").first.click()
+                    page.wait_for_timeout(500)
+                    log.info("Enabled 'Send automated offer'")
                 else:
-                    log.warning(f"Could not find 'Extra {percent_off}%' option")
-            else:
-                log.warning("Could not find coupon checkbox - sending without coupon")
+                    log.info("'Send automated offer' already enabled (default)")
+            except Exception as e:
+                # Non-fatal: the offer still sends at the discount even if we can't
+                # confirm the automated-offer toggle.
+                log.warning(f"Could not confirm 'Send automated offer' state: {e}")
 
             page.wait_for_timeout(1000)
 
             # Screenshot before sending
-            ss4 = os.path.join(DOWNLOAD_DIR, f"sio_before_send_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            page.screenshot(path=ss4, full_page=True)
-            log.info(f"Pre-send screenshot: {ss4}")
+            _safe_shot(page, "sio_before_send")
 
             # 6. Click the "Send offers" submit button
             log.info("Clicking 'Send offers' button...")
@@ -238,9 +260,7 @@ def send_offers(percent_off=5):
             page.wait_for_timeout(10000)
 
             # Screenshot after send
-            ss5 = os.path.join(DOWNLOAD_DIR, f"sio_after_send_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            page.screenshot(path=ss5, full_page=True)
-            log.info(f"After-send screenshot: {ss5}")
+            _safe_shot(page, "sio_after_send")
 
             # Wait 30 seconds then take final verification screenshot
             log.info("Waiting 30 seconds before final verification...")
@@ -250,18 +270,13 @@ def send_offers(percent_off=5):
             page.goto(SIO_URL, wait_until="load", timeout=60000)
             page.wait_for_timeout(5000)
 
-            ss6 = os.path.join(DOWNLOAD_DIR, f"sio_verify_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            page.screenshot(path=ss6, full_page=True)
-            log.info(f"Verification screenshot (reloaded page): {ss6}")
+            _safe_shot(page, "sio_verify")
             log.info(f"Offers sent at {percent_off}% off on all eligible listings!")
+            return selected_count if selected_count > 0 else -1
 
         except Exception as e:
             log.error(f"Failed: {e}")
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            try:
-                page.screenshot(path=os.path.join(DOWNLOAD_DIR, f"sio_error_{ts}.png"))
-            except Exception:
-                pass
+            _safe_shot(page, "sio_error")
             raise
 
         finally:
@@ -271,4 +286,36 @@ def send_offers(percent_off=5):
 
 if __name__ == "__main__":
     pct = int(sys.argv[1]) if len(sys.argv) > 1 else 5
-    send_offers(pct)
+    try:
+        count = send_offers(pct)
+        if count == 0:
+            # Not a crash, but sending offers to nobody on a ~1300-listing store
+            # is abnormal -- surface it so a broken selector can't hide as "0 eligible".
+            notify_send(
+                "eBay send-offers: 0 eligible",
+                f"Send-offers ran but selected 0 listings (nothing sent at {pct}% off). "
+                "Verify this is a real empty day and not a broken filter/selector.",
+                priority="high",
+                tags="warning",
+            )
+        else:
+            shown = "all" if count < 0 else str(count)
+            log.info(f"Done: offers sent at {pct}% off on {shown} eligible listings.")
+            # Daily heartbeat: a positive "it worked" push so that silence itself
+            # becomes a signal something is wrong.
+            notify_send(
+                "eBay offers sent ✅",
+                f"Sent {pct}% off offers to {shown} eligible listings.",
+                priority="default",
+                tags="white_check_mark",
+            )
+    except Exception as e:
+        # This step drives a lot of sales -- a failure must page us, not fail silently.
+        notify_send(
+            "eBay SEND-OFFERS FAILED",
+            f"ai_ebay_send_offers.py crashed at {pct}% off: {e}\n"
+            "No offers went out this run. Check screenshots in ~/Downloads (sio_error_*).",
+            priority="urgent",
+            tags="rotating_light",
+        )
+        raise

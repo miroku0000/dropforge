@@ -24,14 +24,21 @@ from datetime import datetime
 import ebay_utils
 from priceyakblacklistadd import ACCOUNT_ID as PY_ACCOUNT_ID, API_KEY as PY_API_KEY, login as py_login
 
+try:
+    from notify import send as notify_send
+except Exception:  # notify is optional
+    def notify_send(title, message, priority="default", tags=None):
+        return False
+
 DATA_DIR = os.path.join("d:\\", "zikprocessor", "data")
 STATE_FILE = os.path.join(DATA_DIR, "return_state.json")
 
 POST_ORDER_BASE = "https://api.ebay.com/post-order/v2"
 
 # eBay return states we act on -- buyer has requested a return and the seller
-# needs to provide a label / make a decision.
-ACTIONABLE_STATES = {"ITEM_READY_TO_SHIP"}
+# needs to provide a label / make a decision. RETURN_LABEL_PENDING is the
+# same intent as ITEM_READY_TO_SHIP -- both mean "seller must provide a label".
+ACTIONABLE_STATES = {"ITEM_READY_TO_SHIP", "RETURN_LABEL_PENDING"}
 
 
 # ----------------------------------------------------------------------------
@@ -245,6 +252,25 @@ def main():
             print(f"  open_case -> ok={cok} msg={cmsg}")
             rec["case_opened"] = cok
             rec["case_status"] = "opened" if cok else f"failed: {cmsg}"
+            # Phone-notify on each case action so the user knows returns are
+            # being handled -- opened cases (good news) and failed opens (needs
+            # manual attention).
+            if cok:
+                notify_send(
+                    f"PriceYak case opened for {buyer}'s return",
+                    f"eBay return {rid} (order {ebay_oid}) -- asked support for a "
+                    f"return label. PriceYak order {py_oid}.",
+                    priority="default",
+                    tags="package",
+                )
+            else:
+                notify_send(
+                    f"PriceYak case FAILED to open for {buyer}",
+                    f"eBay return {rid} (order {ebay_oid}) -- couldn't open a PriceYak "
+                    f"case: {cmsg[:200]}. Handle manually.",
+                    priority="high",
+                    tags="warning",
+                )
 
         state[rid] = rec
         # be gentle with the PriceYak API
