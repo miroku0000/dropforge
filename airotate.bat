@@ -52,6 +52,16 @@ if errorlevel 1 (
     echo [WARNING] Unsupported-item blacklister had issues, continuing...
 )
 
+REM Step 0-CAT: Fix listings PriceYak miscategorized into PRE-1900 ANTIQUE bottle
+REM categories (we sell no antiques). Recategorizes each to a modern leaf chosen by
+REM title keyword (candle->Candles, water bottle->Vacuum Flasks & Mugs, jar->Jars).
+echo/
+echo [STEP 0-CAT] Fixing antique-bottle miscategorizations...
+python ai_ebay_fix_antique_categories.py
+if errorlevel 1 (
+    echo [WARNING] Antique-category fix had issues, continuing...
+)
+
 REM Step 0-OOS: Remove listings that have been out of stock (Amazon source)
 REM for too long. PriceYak reports quantity==0 + oos_time; end anything OOS for
 REM >= 14 days via the same bulk_delist endpoint priceyakbulkdelete.py uses.
