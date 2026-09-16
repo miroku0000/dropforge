@@ -171,6 +171,17 @@ if errorlevel 1 (
     echo [WARNING] Ads report download had issues, continuing...
 )
 
+REM Step 0c2: Auto-manage the Promoted Listings ad-rate cap on the automagical
+REM campaign (cost-per-sale, DYNAMIC). Reads the report just downloaded, and
+REM raises the cap while ROAS stays healthy / lowers it if ads eat margin. Moves
+REM at most one step per run and only with enough promoted-sales signal.
+echo/
+echo [STEP 0c2] Auto-managing Promoted Listings ad rate...
+python ai_ebay_adrate_controller.py
+if errorlevel 1 (
+    echo [WARNING] Ad-rate controller had issues, continuing...
+)
+
 REM === DISABLED: Top Converters Test no longer checked/managed ===
 REM REM Step 0d: Download Top Converters Keyword Report
 REM echo [STEP 0d] Downloading Top Converters Keyword Report...
