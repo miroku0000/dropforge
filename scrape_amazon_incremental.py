@@ -300,16 +300,23 @@ def _prefilter_asins(asins: list[str]) -> list[str]:
 def main():
     # Parse --min-price argument
     min_price = 0
+    max_price = 0  # 0 = no upper bound
     max_urls = 0  # 0 = scrape the whole list
     for i, arg in enumerate(sys.argv):
         if arg == '--min-price' and i + 1 < len(sys.argv):
             min_price = float(sys.argv[i + 1])
+        if arg == '--max-price' and i + 1 < len(sys.argv):
+            max_price = float(sys.argv[i + 1])
         if arg == '--max-urls' and i + 1 < len(sys.argv):
             max_urls = int(sys.argv[i + 1])
 
     print("Starting incremental Amazon scraper with batch processing...")
     if min_price > 0:
         print(f"Minimum price filter: ${min_price:.0f}")
+    if max_price > 0:
+        # Upper bound keeps new inventory in the cap-efficient band -- the store is
+        # bound by eBay's total-listed-value limit, so cheap items = more listings.
+        print(f"Maximum price filter: ${max_price:.0f}")
 
     # Initialize batch manager
     batch_manager.cleanup_files()
@@ -362,12 +369,15 @@ def main():
                 details = extract_amazon_details(html, url)
                 
                 if details.get("asin"):
-                    # Check minimum price filter
-                    if min_price > 0 and details.get("price") and details["price"] != "N/A":
+                    # Check min/max price filter
+                    if (min_price > 0 or max_price > 0) and details.get("price") and details["price"] != "N/A":
                         try:
                             product_price = float(details["price"])
-                            if product_price < min_price:
+                            if min_price > 0 and product_price < min_price:
                                 print(f"✗ Skipped (${product_price:.2f} < ${min_price:.0f} min): {details['title'][:50]}...")
+                                continue
+                            if max_price > 0 and product_price > max_price:
+                                print(f"✗ Skipped (${product_price:.2f} > ${max_price:.0f} max): {details['title'][:50]}...")
                                 continue
                         except ValueError:
                             pass  # Can't parse price, let it through
@@ -400,16 +410,19 @@ def main():
 
                 # Scrape-time price gate: curated pages (Best Sellers / Movers &
                 # Shakers) can't carry an rh= price filter in the URL, so enforce
-                # the floor here using each card's listed price. ASINs whose price
+                # the band here using each card's listed price. ASINs whose price
                 # can't be read are let through (parity with the product-page gate).
-                if asins and min_price > 0:
+                if asins and (min_price > 0 or max_price > 0):
                     card_prices = extract_asin_prices_from_browse_page(html)
                     before = len(asins)
                     asins = [a for a in asins
-                             if card_prices.get(a) is None or card_prices[a] >= min_price]
+                             if card_prices.get(a) is None
+                             or ((min_price <= 0 or card_prices[a] >= min_price)
+                                 and (max_price <= 0 or card_prices[a] <= max_price))]
                     skipped = before - len(asins)
                     if skipped:
-                        print(f"  Price gate: skipped {skipped}/{before} card(s) below ${min_price:.0f}")
+                        band = f"${min_price:.0f}-{max_price:.0f}" if max_price > 0 else f">=${min_price:.0f}"
+                        print(f"  Price gate: skipped {skipped}/{before} card(s) outside {band}")
 
                 # Drop blacklisted / known-permanent-reject ASINs before enqueue.
                 if asins:

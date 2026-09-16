@@ -62,6 +62,17 @@ if errorlevel 1 (
     echo [WARNING] Antique-category fix had issues, continuing...
 )
 
+REM Step 0-CAP: Reclaim eBay $-limit headroom by ending high-value SLOW-MOVERS.
+REM Store is bound by the ~$484,882 total-listed-value cap; expensive items that
+REM don't sell are dead weight. Frees cap so the day's scrape (bounded by MAX_PRICE)
+REM can refill it with cheaper, faster items. Runs before Step 4 scraping.
+echo/
+echo [STEP 0-CAP] Reclaiming $-limit cap (end high-value slow-movers)...
+python ai_ebay_cap_reclaim.py
+if errorlevel 1 (
+    echo [WARNING] Cap reclaim had issues, continuing...
+)
+
 REM Step 0-OOS: Remove listings that have been out of stock (Amazon source)
 REM for too long. PriceYak reports quantity==0 + oos_time; end anything OOS for
 REM >= 14 days via the same bulk_delist endpoint priceyakbulkdelete.py uses.
@@ -299,7 +310,7 @@ echo [STEP 4] Scraping and listing new items...
 REM --max-urls scrapes a random subset so the (growing) term list does not
 REM blow up Crawlbase cost; the whole list is covered over several runs. Tune
 REM the number to your daily scrape budget.
-call scrapeandlist_batch.bat --min-price %MIN_PRICE% --max-urls %MAX_URLS%
+call scrapeandlist_batch.bat --min-price %MIN_PRICE% --max-price %MAX_PRICE% --max-urls %MAX_URLS%
 if errorlevel 1 (
     echo [WARNING] Scraping had issues, continuing...
 )
